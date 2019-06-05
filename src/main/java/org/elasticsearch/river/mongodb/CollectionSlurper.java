@@ -1,35 +1,29 @@
 package org.elasticsearch.river.mongodb;
 
-import java.util.concurrent.atomic.AtomicLong;
-
+import com.google.common.base.Preconditions;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
+import com.mongodb.*;
+import com.mongodb.gridfs.GridFS;
+import com.mongodb.gridfs.GridFSDBFile;
+import com.mongodb.gridfs.GridFSFile;
+import lombok.extern.slf4j.Slf4j;
 import org.bson.BasicBSONObject;
 import org.bson.types.ObjectId;
 import org.elasticsearch.client.Client;
-import org.elasticsearch.common.collect.ImmutableList;
-import org.elasticsearch.common.collect.ImmutableMap;
 import org.elasticsearch.common.unit.TimeValue;
 import org.elasticsearch.river.mongodb.util.MongoDBHelper;
 import org.elasticsearch.river.mongodb.util.MongoDBRiverHelper;
 
-import com.google.common.base.Preconditions;
-import com.mongodb.BasicDBObject;
-import com.mongodb.CommandResult;
-import com.mongodb.DB;
-import com.mongodb.DBCollection;
-import com.mongodb.DBCursor;
-import com.mongodb.DBObject;
-import com.mongodb.MongoClient;
-import com.mongodb.MongoCursorNotFoundException;
-import com.mongodb.MongoInterruptedException;
-import com.mongodb.MongoSocketException;
-import com.mongodb.MongoTimeoutException;
-import com.mongodb.QueryOperators;
-import com.mongodb.gridfs.GridFS;
-import com.mongodb.gridfs.GridFSDBFile;
-import com.mongodb.gridfs.GridFSFile;
+import java.util.concurrent.atomic.AtomicLong;
 
-class CollectionSlurper extends MongoDBRiverComponent {
+/**
+ * 表消费者
+ */
+@Slf4j
+class CollectionSlurper {
 
+    //映射规则
     private final MongoDBRiverDefinition definition;
     private final SharedContext context;
     private final Client esClient;
@@ -38,7 +32,6 @@ class CollectionSlurper extends MongoDBRiverComponent {
     private final AtomicLong totalDocuments = new AtomicLong();
 
     public CollectionSlurper(MongoDBRiver river, MongoClient mongoClient) {
-        super(river);
         this.definition = river.definition;
         this.context = river.context;
         this.esClient = river.esClient;
@@ -57,7 +50,7 @@ class CollectionSlurper extends MongoDBRiverComponent {
                 // MongoDB would delete the index and re-attempt the import
                 // We should probably do that too or at least have an option for it
                 // https://groups.google.com/d/msg/mongodb-user/hrOuS-lpMeI/opP6l0gndSEJ
-                logger.error("Cannot import collection {} into existing index", definition.getMongoCollection());
+                log.error("Cannot import collection {} into existing index", definition.getMongoCollection());
                 MongoDBRiverHelper.setRiverStatus(
                         esClient, definition.getRiverName(), Status.INITIAL_IMPORT_FAILED);
                 return;
@@ -74,11 +67,11 @@ class CollectionSlurper extends MongoDBRiverComponent {
                 importCollection(collection, timestamp);
             }
         } catch (MongoInterruptedException | InterruptedException e) {
-            logger.error("river-mongodb slurper interrupted");
+            log.error("river-mongodb slurper interrupted");
             Thread.currentThread().interrupt();
         } catch (Exception e) {
-            logger.error("Exception in initial import", e);
-            logger.debug("Total documents inserted so far: {}", totalDocuments.get());
+            log.error("Exception in initial import", e);
+            log.debug("Total documents inserted so far: {}", totalDocuments.get());
             Thread.currentThread().interrupt();
         }
     }
@@ -100,7 +93,7 @@ class CollectionSlurper extends MongoDBRiverComponent {
         // DBCollection slurpedCollection =
         // slurpedDb.getCollection(definition.getMongoCollection());
 
-        logger.info("MongoDBRiver is beginning initial import of " + collection.getFullName());
+        log.info("MongoDBRiver is beginning initial import of " + collection.getFullName());
         boolean inProgress = true;
         String lastId = null;
         while (inProgress) {
@@ -110,9 +103,9 @@ class CollectionSlurper extends MongoDBRiverComponent {
                     updateIndexRefresh(definition.getIndexName(), -1L);
                 }
                 if (!definition.isMongoGridFS()) {
-                    if (logger.isTraceEnabled()) {
+                    if (log.isTraceEnabled()) {
                         // Note: collection.count() is expensive on TokuMX
-                        logger.trace("Collection {} - count: {}", collection.getName(), safeCount(collection, timestamp.getClass()));
+                        log.trace("Collection {} - count: {}", collection.getName(), safeCount(collection, timestamp.getClass()));
                     }
                     long count = 0;
                     cursor = collection
@@ -122,14 +115,14 @@ class CollectionSlurper extends MongoDBRiverComponent {
                         DBObject object = cursor.next();
                         count++;
                         if (cursor.hasNext()) {
-                          lastId = addInsertToStream(null, applyFieldFilter(object), collection.getName());
+                            lastId = addInsertToStream(null, applyFieldFilter(object), collection.getName());
                         } else {
-                          logger.debug("Last entry for initial import of {} - add timestamp: {}", collection.getFullName(), timestamp);
-                          lastId = addInsertToStream(timestamp, applyFieldFilter(object), collection.getName());
+                            log.debug("Last entry for initial import of {} - add timestamp: {}", collection.getFullName(), timestamp);
+                            lastId = addInsertToStream(timestamp, applyFieldFilter(object), collection.getName());
                         }
                     }
                     inProgress = false;
-                    logger.info("Number of documents indexed in initial import of {}: {}", collection.getFullName(), count);
+                    log.info("Number of documents indexed in initial import of {}: {}", collection.getFullName(), count);
                 } else {
                     // TODO: To be optimized.
                     // https://github.com/mongodb/mongo-java-driver/pull/48#issuecomment-25241988
@@ -142,22 +135,22 @@ class CollectionSlurper extends MongoDBRiverComponent {
                         if (object instanceof GridFSDBFile) {
                             GridFSDBFile file = grid.findOne(new ObjectId(object.get(MongoDBRiver.MONGODB_ID_FIELD).toString()));
                             if (cursor.hasNext()) {
-                              lastId = addInsertToStream(null, file);
+                                lastId = addInsertToStream(null, file);
                             } else {
-                              logger.debug("Last entry for initial import of {} - add timestamp: {}", collection.getFullName(), timestamp);
-                              lastId = addInsertToStream(timestamp, file);
+                                log.debug("Last entry for initial import of {} - add timestamp: {}", collection.getFullName(), timestamp);
+                                lastId = addInsertToStream(timestamp, file);
                             }
                         }
                     }
                     inProgress = false;
                 }
             } catch (MongoSocketException | MongoTimeoutException | MongoCursorNotFoundException e) {
-                logger.info("Initial import - {} - {}. Will retry.", e.getClass().getSimpleName(), e.getMessage());
-                logger.debug("Total documents inserted so far: {}", totalDocuments.get());
+                log.info("Initial import - {} - {}. Will retry.", e.getClass().getSimpleName(), e.getMessage());
+                log.debug("Total documents inserted so far: {}", totalDocuments.get());
                 Thread.sleep(MongoDBRiver.MONGODB_RETRY_ERROR_DELAY_MS);
             } finally {
                 if (cursor != null) {
-                    logger.trace("Closing initial import cursor");
+                    log.trace("Closing initial import cursor");
                     cursor.close();
                 }
                 if (definition.isDisableIndexRefresh()) {
@@ -225,23 +218,22 @@ class CollectionSlurper extends MongoDBRiverComponent {
 
     private void addToStream(final Operation operation, final Timestamp<?> currentTimestamp, final DBObject data, final String collection)
             throws InterruptedException {
-        if (logger.isTraceEnabled()) {
+        if (log.isTraceEnabled()) {
             String dataString = data.toString();
             if (dataString.length() > 400) {
-                logger.trace("addToStream - operation [{}], currentTimestamp [{}], data (_id:[{}], serialized length:{}), collection [{}]",
+                log.trace("addToStream - operation [{}], currentTimestamp [{}], data (_id:[{}], serialized length:{}), collection [{}]",
                         operation, currentTimestamp, data.get("_id"), dataString.length(), collection);
             } else {
-                logger.trace("addToStream - operation [{}], currentTimestamp [{}], data [{}], collection [{}]",
+                log.trace("addToStream - operation [{}], currentTimestamp [{}], data [{}], collection [{}]",
                         operation, currentTimestamp, dataString, collection);
             }
         }
 
         if (operation == Operation.DROP_DATABASE) {
-            logger.info("addToStream - Operation.DROP_DATABASE, currentTimestamp [{}], data [{}], collection [{}]",
-                    currentTimestamp, data, collection);
+            log.info("addToStream - Operation.DROP_DATABASE, currentTimestamp [{}], data [{}], collection [{}]", currentTimestamp, data, collection);
             if (definition.isImportAllCollections()) {
                 for (String name : slurpedDb.getCollectionNames()) {
-                    logger.info("addToStream - isImportAllCollections - Operation.DROP_DATABASE, currentTimestamp [{}], data [{}], collection [{}]",
+                    log.info("addToStream - isImportAllCollections - Operation.DROP_DATABASE, currentTimestamp [{}], data [{}], collection [{}]",
                             currentTimestamp, data, name);
                     context.getStream().put(new MongoDBRiver.QueueEntry(currentTimestamp, Operation.DROP_COLLECTION, data, name));
                 }

@@ -62,6 +62,7 @@ public abstract class Timestamp<T extends Timestamp<T>> implements Comparable<Ti
 
         @Override
         public DBObject getOplogFilter() {
+            //根据ts过滤，搜索大于等于某个时间点的条件
             return new BasicDBObject(MongoDBRiver.OPLOG_TIMESTAMP, new BasicDBObject(QueryOperators.GTE, ts));
         }
 
@@ -148,7 +149,7 @@ public abstract class Timestamp<T extends Timestamp<T>> implements Comparable<Ti
             timestamp = JSON.parse((String) timestamp);
         }
         if (timestamp instanceof BSONTimestamp) {
-            BSON result = new Timestamp.BSON((BSONTimestamp) timestamp);
+            BSON result = new BSON((BSONTimestamp) timestamp);
             return result;
         }
         if (timestamp instanceof Date) {
@@ -162,9 +163,9 @@ public abstract class Timestamp<T extends Timestamp<T>> implements Comparable<Ti
                 id = JSON.parse((String) id);
             }
             if (id instanceof Binary) {
-                result = new Timestamp.GTID(((Binary) id).getData(), (Date) timestamp);
+                result = new GTID(((Binary) id).getData(), (Date) timestamp);
             } else if (id instanceof byte[]) {
-                result = new Timestamp.GTID((byte[]) id, (Date) timestamp);
+                result = new GTID((byte[]) id, (Date) timestamp);
             }
             if (result == null) {
                 throw new IllegalStateException("Unable to parse " + gtidField

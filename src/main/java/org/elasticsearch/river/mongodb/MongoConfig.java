@@ -5,7 +5,6 @@ import java.util.List;
 import com.mongodb.ServerAddress;
 
 public class MongoConfig {
-
     private boolean isMongos;
     private final List<Shard> shards;
     

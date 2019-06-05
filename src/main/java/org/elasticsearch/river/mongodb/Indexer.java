@@ -1,55 +1,49 @@
 package org.elasticsearch.river.mongodb;
 
-import static java.util.concurrent.TimeUnit.MILLISECONDS;
-
-import java.io.IOException;
-import java.util.AbstractMap.SimpleEntry;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
-import org.bson.types.BasicBSONList;
-import org.elasticsearch.action.search.SearchResponse;
-import org.elasticsearch.client.Client;
-import org.elasticsearch.common.collect.ImmutableMap;
-import org.elasticsearch.common.collect.Maps;
-import org.elasticsearch.common.xcontent.XContentBuilder;
-import org.elasticsearch.common.xcontent.XContentFactory;
-import org.elasticsearch.common.xcontent.XContentType;
-import org.elasticsearch.index.query.QueryBuilder;
-import org.elasticsearch.index.query.QueryBuilders;
-import org.elasticsearch.river.mongodb.MongoDBRiver.QueueEntry;
-import org.elasticsearch.river.mongodb.util.MongoDBHelper;
-import org.elasticsearch.river.mongodb.util.MongoDBRiverHelper;
-import org.elasticsearch.script.ExecutableScript;
-import org.elasticsearch.script.ScriptService;
-import org.elasticsearch.search.SearchHit;
-
+import com.google.common.collect.Maps;
 import com.mongodb.BasicDBList;
 import com.mongodb.BasicDBObject;
 import com.mongodb.DBObject;
 import com.mongodb.DBRef;
 import com.mongodb.gridfs.GridFSDBFile;
+import lombok.extern.slf4j.Slf4j;
+import org.bson.types.BasicBSONList;
+import org.elasticsearch.action.search.SearchResponse;
+import org.elasticsearch.client.Client;
+import org.elasticsearch.common.xcontent.XContentBuilder;
+import org.elasticsearch.common.xcontent.XContentFactory;
+import org.elasticsearch.index.query.QueryBuilder;
+import org.elasticsearch.index.query.QueryBuilders;
+import org.elasticsearch.river.mongodb.MongoDBRiver.QueueEntry;
+import org.elasticsearch.river.mongodb.util.MongoDBHelper;
+import org.elasticsearch.search.SearchHit;
 
-class Indexer extends MongoDBRiverComponent implements Runnable {
+import java.io.IOException;
+import java.util.AbstractMap.SimpleEntry;
+import java.util.HashMap;
+import java.util.Map;
+
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
+
+@Slf4j
+class Indexer implements Runnable {
 
     private final MongoDBRiver river;
+    //定义了映射规则
     private final MongoDBRiverDefinition definition;
     private final SharedContext context;
     private final Client esClient;
-    private final ScriptService scriptService;
+//    private final ScriptService scriptService;
 
     private final Map<SimpleEntry<String, String>, MongoDBRiverBulkProcessor> processors = Maps.newHashMap();
 
     public Indexer(MongoDBRiver river) {
-        super(river);
         this.river = river;
         this.definition = river.definition;
         this.context = river.context;
         this.esClient = river.esClient;
-        this.scriptService = river.scriptService;
-        logger.debug(
+//        this.scriptService = river.scriptService;
+        log.debug(
                 "Create bulk processor with parameters - bulk actions: {} - concurrent request: {} - flush interval: {} - bulk size: {}",
                 definition.getBulk().getBulkActions(), definition.getBulk().getConcurrentRequests(), definition.getBulk()
                         .getFlushInterval(), definition.getBulk().getBulkSize());
@@ -61,6 +55,7 @@ class Indexer extends MongoDBRiverComponent implements Runnable {
         while (context.getStatus() == Status.RUNNING) {
 
             try {
+                //记录时间
                 Timestamp<?> lastTimestamp = null;
 
                 // 1. Attempt to fill as much of the bulk request as possible
@@ -77,7 +72,7 @@ class Indexer extends MongoDBRiverComponent implements Runnable {
                 }
 
             } catch (InterruptedException e) {
-                logger.info("river-mongodb indexer interrupted");
+                log.info("river-mongodb indexer interrupted");
                 releaseProcessors();
                 Thread.currentThread().interrupt();
                 break;
@@ -106,11 +101,12 @@ class Indexer extends MongoDBRiverComponent implements Runnable {
         Operation operation = entry.getOperation();
         if (entry.getData().get(MongoDBRiver.MONGODB_ID_FIELD) == null
                 && (operation == Operation.INSERT || operation == Operation.UPDATE || operation == Operation.DELETE)) {
-            logger.warn("Cannot get object id. Skip the current item: [{}]", entry.getData());
+            log.warn("Cannot get object id. Skip the current item: [{}]", entry.getData());
             return null;
         }
 
         Timestamp<?> lastTimestamp = entry.getOplogTimestamp();
+
         String type;
         if (definition.isImportAllCollections()) {
             type = entry.getCollection();
@@ -121,7 +117,7 @@ class Indexer extends MongoDBRiverComponent implements Runnable {
             try {
                 updateBulkRequest(entry.getData(), null, operation, definition.getIndexName(), type, null, null);
             } catch (IOException ioEx) {
-                logger.error("Update bulk failed.", ioEx);
+                log.error("Update bulk failed.", ioEx);
             }
             return lastTimestamp;
         }
@@ -137,7 +133,7 @@ class Indexer extends MongoDBRiverComponent implements Runnable {
             try {
                 updateBulkRequest(entry.getData(), objectId, operation, definition.getIndexName(), type, null, null);
             } catch (IOException ioEx) {
-                logger.error("Update bulk failed.", ioEx);
+                log.error("Update bulk failed.", ioEx);
             }
             return lastTimestamp;
         }
@@ -146,18 +142,19 @@ class Indexer extends MongoDBRiverComponent implements Runnable {
             return applyAdvancedTransformation(entry, type);
         }
 
-        if (logger.isTraceEnabled()) {
-            logger.trace("updateBulkRequest for id: [{}], operation: [{}]", objectId, operation);
+        if (log.isTraceEnabled()) {
+            log.trace("updateBulkRequest for id: [{}], operation: [{}]", objectId, operation);
         }
 
         if (!definition.getIncludeCollection().isEmpty()) {
-            logger.trace("About to include collection. set attribute {} / {} ", definition.getIncludeCollection(),
+            log.trace("About to include collection. set attribute {} / {} ", definition.getIncludeCollection(),
                     definition.getMongoCollection());
             entry.getData().put(definition.getIncludeCollection(), definition.getMongoCollection());
         }
 
         Map<String, Object> ctx = new HashMap<>();
         Map<String, Object> data = entry.getData().toMap();
+        /*
         if (hasScript()) {
             if (ctx != null) {
                 ctx.put("document", entry.getData());
@@ -165,26 +162,25 @@ class Indexer extends MongoDBRiverComponent implements Runnable {
                 if (!objectId.isEmpty()) {
                     ctx.put("id", objectId);
                 }
-                if (logger.isTraceEnabled()) {
-                    logger.trace("Script to be executed: {} - {}", definition.getScriptType(), definition.getScript());
-                    logger.trace("Context before script executed: {}", ctx);
+                if (log.isTraceEnabled()) {
+                    log.trace("Script to be executed: {} - {}", definition.getScriptType(), definition.getScript());
+                    log.trace("Context before script executed: {}", ctx);
                 }
                 try {
-                    ExecutableScript executableScript = scriptService.executable(definition.getScriptType(), definition.getScript(),
-                            ScriptService.ScriptType.INLINE, ImmutableMap.<String, Object>of("logger", logger));
+                    ExecutableScript executableScript = scriptService.executable(definition.getScriptType(), definition.getScript(), ScriptService.ScriptType.INLINE, ImmutableMap.<String, Object>of("log", log));
                     executableScript.setNextVar("ctx", ctx);
                     executableScript.run();
                     // we need to unwrap the context object...
                     ctx = (Map<String, Object>) executableScript.unwrap(ctx);
                 } catch (Exception e) {
-                    logger.warn("failed to script process {}, ignoring", e, ctx);
+                    log.warn("failed to script process {}, ignoring", e, ctx);
                     MongoDBRiverHelper.setRiverStatus(esClient, definition.getRiverName(), Status.SCRIPT_IMPORT_FAILED);
                 }
-                if (logger.isTraceEnabled()) {
-                    logger.trace("Context after script executed: {}", ctx);
+                if (log.isTraceEnabled()) {
+                    log.trace("Context after script executed: {}", ctx);
                 }
                 if (isDocumentIgnored(ctx)) {
-                    logger.trace("From script ignore document id: {}", objectId);
+                    log.trace("From script ignore document id: {}", objectId);
                     // ignore document
                     return lastTimestamp;
                 }
@@ -193,12 +189,13 @@ class Indexer extends MongoDBRiverComponent implements Runnable {
                 }
                 if (ctx.containsKey("document")) {
                     data = (Map<String, Object>) ctx.get("document");
-                    logger.trace("From script document: {}", data);
+                    log.trace("From script document: {}", data);
                 }
                 operation = extractOperation(ctx);
-                logger.trace("From script operation: {} -> {}", ctx.get("operation").toString(), operation);
+                log.trace("From script operation: {} -> {}", ctx.get("operation").toString(), operation);
             }
         }
+        */
 
         try {
             String index = extractIndex(ctx);
@@ -208,39 +205,39 @@ class Indexer extends MongoDBRiverComponent implements Runnable {
             objectId = extractObjectId(ctx, objectId);
             updateBulkRequest(new BasicDBObject(data), objectId, operation, index, type, routing, parent);
         } catch (IOException e) {
-            logger.warn("failed to parse {}", e, entry.getData());
+            log.warn("failed to parse {}", e, entry.getData());
         }
         return lastTimestamp;
     }
 
     private void updateBulkRequest(DBObject data, String objectId, Operation operation, String index, String type, String routing,
             String parent) throws IOException {
-        if (logger.isTraceEnabled()) {
-            logger.trace("Operation: {} - index: {} - type: {} - routing: {} - parent: {}", operation, index, type, routing, parent);
+        if (log.isTraceEnabled()) {
+            log.trace("Operation: {} - index: {} - type: {} - routing: {} - parent: {}", operation, index, type, routing, parent);
         }
 
         if (operation == Operation.UNKNOWN) {
-            logger.error("Unknown operation for id[{}] - entry [{}] - index[{}] - type[{}]", objectId, data, index, type);
+            log.error("Unknown operation for id[{}] - entry [{}] - index[{}] - type[{}]", objectId, data, index, type);
             context.setStatus(Status.IMPORT_FAILED);
             return;
         }
 
         if (operation == Operation.INSERT) {
-            if (logger.isTraceEnabled()) {
-                logger.trace("Insert operation - id: {} - contains attachment: {}", objectId, (data instanceof GridFSDBFile));
+            if (log.isTraceEnabled()) {
+                log.trace("Insert operation - id: {} - contains attachment: {}", objectId, (data instanceof GridFSDBFile));
             }
             getBulkProcessor(index, type).addBulkRequest(objectId, build(data, objectId), routing, parent);
         }
         // UPDATE = DELETE + INSERT operation
         if (operation == Operation.UPDATE) {
-            if (logger.isTraceEnabled()) {
-                logger.trace("Update operation - id: {} - contains attachment: {}", objectId, (data instanceof GridFSDBFile));
+            if (log.isTraceEnabled()) {
+                log.trace("Update operation - id: {} - contains attachment: {}", objectId, (data instanceof GridFSDBFile));
             }
             deleteBulkRequest(objectId, index, type, routing, parent);
             getBulkProcessor(index, type).addBulkRequest(objectId, build(data, objectId), routing, parent);
         }
         if (operation == Operation.DELETE) {
-            logger.trace("Delete request [{}], [{}], [{}]", index, type, objectId);
+            log.trace("Delete request [{}], [{}], [{}]", index, type, objectId);
             deleteBulkRequest(objectId, index, type, routing, parent);
         }
         if (operation == Operation.DROP_COLLECTION) {
@@ -248,7 +245,7 @@ class Indexer extends MongoDBRiverComponent implements Runnable {
                 MongoDBRiverBulkProcessor processor = getBulkProcessor(index, type);
                 processor.dropIndex();
             } else {
-                logger.info("Ignore drop collection request [{}], [{}]. The option has been disabled.", index, type);
+                log.info("Ignore drop collection request [{}], [{}]. The option has been disabled.", index, type);
             }
         }
     }
@@ -257,15 +254,18 @@ class Indexer extends MongoDBRiverComponent implements Runnable {
      * Delete children when parent / child is used
      */
     private void deleteBulkRequest(String objectId, String index, String type, String routing, String parent) {
-        if (logger.isTraceEnabled()) {
-            logger.trace("bulkDeleteRequest - objectId: {} - index: {} - type: {} - routing: {} - parent: {}", objectId, index, type,
+        if (log.isTraceEnabled()) {
+            log.trace("bulkDeleteRequest - objectId: {} - index: {} - type: {} - routing: {} - parent: {}", objectId, index, type,
                     routing, parent);
         }
 
         if (definition.getParentTypes() != null && definition.getParentTypes().contains(type)) {
-            QueryBuilder builder = QueryBuilders.hasParentQuery(type, QueryBuilders.termQuery(MongoDBRiver.MONGODB_ID_FIELD, objectId));
-            SearchResponse response = esClient.prepareSearch(index).setQuery(builder).setRouting(routing)
-                    .addField(MongoDBRiver.MONGODB_ID_FIELD).execute().actionGet();
+            QueryBuilder builder = QueryBuilders.termQuery(MongoDBRiver.MONGODB_ID_FIELD, objectId);
+            SearchResponse response = esClient.prepareSearch(index)
+                    .setTypes(type)
+                    .setQuery(builder)
+                    .setRouting(routing)
+                    .execute().actionGet();
             for (SearchHit hit : response.getHits().getHits()) {
                 getBulkProcessor(index, hit.getType()).deleteBulkRequest(hit.getId(), routing, objectId);
             }
@@ -282,18 +282,23 @@ class Indexer extends MongoDBRiverComponent implements Runnable {
         if (entry.getData().get(MongoDBRiver.MONGODB_ID_FIELD) != null) {
             objectId = entry.getData().get(MongoDBRiver.MONGODB_ID_FIELD).toString();
         }
-        if (logger.isTraceEnabled()) {
-            logger.trace("applyAdvancedTransformation for id: [{}], operation: [{}]", objectId, operation);
+        if (log.isTraceEnabled()) {
+            log.trace("applyAdvancedTransformation for id: [{}], operation: [{}]", objectId, operation);
         }
 
         if (!definition.getIncludeCollection().isEmpty()) {
-            logger.trace("About to include collection. set attribute {} / {} ", definition.getIncludeCollection(),
+            log.trace("About to include collection. set attribute {} / {} ", definition.getIncludeCollection(),
                     definition.getMongoCollection());
             entry.getData().put(definition.getIncludeCollection(), definition.getMongoCollection());
         }
-        Map<String, Object> ctx = null;
+        /*
+        Map<String, Object> ctx = new HashMap<>();
         try {
+            XContentBuilder builder = XContentFactory.jsonBuilder();
+            builder.startObject().endObject();
+
             ctx = XContentFactory.xContent(XContentType.JSON).createParser("{}").mapAndClose();
+            XContentFactory.xContent(XContentType.JSON).st
         } catch (Exception e) {
         }
 
@@ -316,29 +321,29 @@ class Indexer extends MongoDBRiverComponent implements Runnable {
                 ctx.put("documents", documents);
                 try {
                     ExecutableScript executableScript = scriptService.executable(definition.getScriptType(), definition.getScript(),
-                            ScriptService.ScriptType.INLINE, ImmutableMap.<String, Object>of("logger", logger));
-                    if (logger.isTraceEnabled()) {
-                        logger.trace("Script to be executed: {} - {}", definition.getScriptType(), definition.getScript());
-                        logger.trace("Context before script executed: {}", ctx);
+                            ScriptService.ScriptType.INLINE, ImmutableMap.<String, Object>of("log", log));
+                    if (log.isTraceEnabled()) {
+                        log.trace("Script to be executed: {} - {}", definition.getScriptType(), definition.getScript());
+                        log.trace("Context before script executed: {}", ctx);
                     }
                     executableScript.setNextVar("ctx", ctx);
                     executableScript.run();
                     // we need to unwrap the context object...
                     ctx = (Map<String, Object>) executableScript.unwrap(ctx);
                 } catch (Exception e) {
-                    logger.error("failed to script process {}, ignoring", e, ctx);
+                    log.error("failed to script process {}, ignoring", e, ctx);
                     MongoDBRiverHelper.setRiverStatus(esClient, definition.getRiverName(), Status.SCRIPT_IMPORT_FAILED);
                 }
-                if (logger.isTraceEnabled()) {
-                    logger.trace("Context after script executed: {}", ctx);
+                if (log.isTraceEnabled()) {
+                    log.trace("Context after script executed: {}", ctx);
                 }
                 if (ctx.containsKey("documents") && ctx.get("documents") instanceof List<?>) {
                     documents = (List<Object>) ctx.get("documents");
                     for (Object object : documents) {
                         if (object instanceof Map<?, ?>) {
                             Map<String, Object> item = (Map<String, Object>) object;
-                            if (logger.isTraceEnabled()) {
-                                logger.trace("item: {}", item);
+                            if (log.isTraceEnabled()) {
+                                log.trace("item: {}", item);
                             }
                             if (isDocumentDeleted(item)) {
                                 item.put("operation", MongoDBRiver.OPLOG_DELETE_OPERATION);
@@ -352,8 +357,8 @@ class Indexer extends MongoDBRiverComponent implements Runnable {
                             boolean ignore = isDocumentIgnored(item);
                             Map<String, Object> data = (Map<String, Object>) item.get("data");
                             objectId = extractObjectId(data, objectId);
-                            if (logger.isTraceEnabled()) {
-                                logger.trace(
+                            if (log.isTraceEnabled()) {
+                                log.trace(
                                         "#### - Id: {} - operation: {} - ignore: {} - index: {} - type: {} - routing: {} - parent: {}",
                                         objectId, operation, ignore, index, type, routing, parent);
                             }
@@ -363,20 +368,21 @@ class Indexer extends MongoDBRiverComponent implements Runnable {
                             try {
                                 updateBulkRequest(new BasicDBObject(data), objectId, operation, index, type, routing, parent);
                             } catch (IOException ioEx) {
-                                logger.error("Update bulk failed.", ioEx);
+                                log.error("Update bulk failed.", ioEx);
                             }
                         }
                     }
                 }
             }
         }
+        */
 
         return lastTimestamp;
     }
 
     private XContentBuilder build(final DBObject data, final String objectId) throws IOException {
         if (data instanceof GridFSDBFile) {
-            logger.info("Add Attachment: {} to index {} / type {}", objectId, definition.getIndexName(), definition.getTypeName());
+            log.info("Add Attachment: {} to index {} / type {}", objectId, definition.getIndexName(), definition.getTypeName());
             return MongoDBHelper.serialize((GridFSDBFile) data);
         } else {
             Map<String, Object> mapData = this.createObjectMap(data);

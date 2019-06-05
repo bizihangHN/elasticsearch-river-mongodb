@@ -1,15 +1,16 @@
 package org.elasticsearch.river.mongodb;
 
+import lombok.extern.slf4j.Slf4j;
 import org.elasticsearch.river.mongodb.util.MongoDBRiverHelper;
 
-class StatusChecker extends MongoDBRiverComponent implements Runnable {
+@Slf4j
+class StatusChecker implements Runnable {
 
     private final MongoDBRiver mongoDBRiver;
     private final MongoDBRiverDefinition definition;
     private final SharedContext context;
 
     public StatusChecker(MongoDBRiver mongoDBRiver, MongoDBRiverDefinition definition, SharedContext context) {
-        super(mongoDBRiver);
         this.mongoDBRiver = mongoDBRiver;
         this.definition = definition;
         this.context = context;
@@ -22,16 +23,16 @@ class StatusChecker extends MongoDBRiverComponent implements Runnable {
                 Status status = MongoDBRiverHelper.getRiverStatus(this.mongoDBRiver.esClient, this.definition.getRiverName());
                 if (status != this.context.getStatus()) {
                     if (status == Status.RUNNING && this.context.getStatus() != Status.STARTING) {
-                        logger.trace("About to start river: {}", this.definition.getRiverName());
+                        log.trace("About to start river: {}", this.definition.getRiverName());
                         mongoDBRiver.internalStartRiver();
                     } else if (status == Status.STOPPED) {
-                        logger.info("About to stop river: {}", this.definition.getRiverName());
+                        log.info("About to stop river: {}", this.definition.getRiverName());
                         mongoDBRiver.internalStopRiver();
                     }
                 }
                 Thread.sleep(1000L);
             } catch (InterruptedException e) {
-                logger.debug("Status thread interrupted", e, (Object) null);
+                log.debug("Status thread interrupted", e, (Object) null);
                 Thread.currentThread().interrupt();
                 break;
             }

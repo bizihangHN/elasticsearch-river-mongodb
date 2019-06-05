@@ -19,33 +19,30 @@
 
 package org.elasticsearch.river.mongodb.util;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Properties;
-import java.util.Set;
-
-import org.elasticsearch.common.Base64;
-import org.elasticsearch.common.collect.Sets;
-import org.elasticsearch.common.io.FastStringReader;
-import org.elasticsearch.common.io.Streams;
-import org.elasticsearch.common.joda.time.DateTimeZone;
-import org.elasticsearch.common.joda.time.format.ISODateTimeFormat;
-import org.elasticsearch.common.xcontent.XContentBuilder;
-import org.elasticsearch.common.xcontent.XContentFactory;
-
 import com.mongodb.BasicDBObject;
 import com.mongodb.DBObject;
 import com.mongodb.gridfs.GridFSDBFile;
 import com.mongodb.gridfs.GridFSFile;
+import org.elasticsearch.common.util.set.Sets;
+import org.elasticsearch.common.xcontent.XContentBuilder;
+import org.elasticsearch.common.xcontent.XContentFactory;
+import org.joda.time.DateTimeZone;
+import org.joda.time.format.ISODateTimeFormat;
 
-/*
- * MongoDB Helper class
- */
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.*;
+
 public abstract class MongoDBHelper {
 
+    /**
+     * 序列化{@link GridFSDBFile},以字符串的方式存入ES
+     *
+     * @param file
+     * @return
+     * @throws IOException
+     */
     public static XContentBuilder serialize(GridFSDBFile file) throws IOException {
 
         XContentBuilder builder = XContentFactory.jsonBuilder();
@@ -63,7 +60,7 @@ public abstract class MongoDBHelper {
             buffer.flush();
         }
 
-        String encodedContent = Base64.encodeBytes(buffer.toByteArray());
+        String encodedContent = Base64.getEncoder().encodeToString(buffer.toByteArray());
 
         // Probably not necessary...
         buffer.close();
@@ -93,6 +90,13 @@ public abstract class MongoDBHelper {
         return builder;
     }
 
+    /**
+     * 排除某个db中的某些属性
+     *
+     * @param bsonObject    数据库对象
+     * @param excludeFields 排除掉的属性
+     * @return
+     */
     public static DBObject applyExcludeFields(DBObject bsonObject, Set<String> excludeFields) {
         if (excludeFields == null) {
             return bsonObject;
@@ -131,6 +135,13 @@ public abstract class MongoDBHelper {
         return children;
     }
 
+    /**
+     * 某个db包含某些属性
+     *
+     * @param bsonObject
+     * @param includeFields
+     * @return
+     */
     public static DBObject applyIncludeFields(DBObject bsonObject, final Set<String> includeFields) {
         if (includeFields == null) {
             return bsonObject;
@@ -166,9 +177,12 @@ public abstract class MongoDBHelper {
     public static String getRiverVersion() {
         String version = "Undefined";
         try {
-            String properties = Streams.copyToStringFromClasspath("/org/elasticsearch/river/mongodb/es-build.properties");
+            String path = "/org/elasticsearch/river/mongodb/es-build.properties";
             Properties props = new Properties();
-            props.load(new FastStringReader(properties));
+            try (InputStream in = ClassLoader.getSystemResourceAsStream(path)) {
+                props.load(in);
+            } catch (Exception e) {
+            }
             String ver = props.getProperty("version", "undefined");
             String hash = props.getProperty("hash", "undefined");
             if (!"undefined".equals(hash)) {
@@ -186,6 +200,14 @@ public abstract class MongoDBHelper {
 
     }
 
+    /**
+     * 某个db包含或者排除某些属性
+     *
+     * @param object
+     * @param includeFields
+     * @param excludeFields
+     * @return
+     */
     public static DBObject applyFieldFilter(DBObject object, final Set<String> includeFields, final Set<String> excludeFields) {
         if (object instanceof GridFSFile) {
             GridFSFile file = (GridFSFile) object;
