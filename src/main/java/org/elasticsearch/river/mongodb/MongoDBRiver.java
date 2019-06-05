@@ -16,6 +16,7 @@ import org.elasticsearch.cluster.block.ClusterBlockException;
 import org.elasticsearch.common.util.concurrent.EsExecutors;
 import org.elasticsearch.common.xcontent.XContentBuilder;
 import org.elasticsearch.river.mongodb.MongoConfig.Shard;
+import org.elasticsearch.river.mongodb.config.RiverProperties;
 import org.elasticsearch.river.mongodb.util.MongoDBHelper;
 import org.elasticsearch.river.mongodb.util.MongoDBRiverHelper;
 
@@ -85,9 +86,8 @@ public class MongoDBRiver {
 
     static final int MONGODB_RETRY_ERROR_DELAY_MS = 10_000;
 
-    protected final MongoDBRiverDefinition definition;
+    protected final RiverProperties definition;
     protected final Client esClient;
-    //    protected final ScriptService scriptService;
     protected final SharedContext context;
 
     protected final List<Thread> tailerThreads = Lists.newArrayList();
@@ -103,7 +103,7 @@ public class MongoDBRiver {
                         RiverSettings settings,
                         String riverIndexName,
                         Client esClient,
-//                        ScriptService scriptService,
+                        RiverProperties riverProperties,
                         MongoClientService mongoClientService) {
         if (log.isTraceEnabled()) {
             log.trace("Initializing");
@@ -114,9 +114,8 @@ public class MongoDBRiver {
 //        this.scriptService = scriptService;
         this.mongoClientService = mongoClientService;
         //解析设置
-        this.definition = MongoDBRiverDefinition.parseSettings(riverName.name(), riverIndexName, settings
-                //,scriptService
-        );
+        this.definition = riverProperties;
+        //,scriptService);
 
         //队列
         BlockingQueue<QueueEntry> stream = definition.getThrottleSize() == -1 ?
