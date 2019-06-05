@@ -5,6 +5,7 @@ import com.mongodb.*;
 import lombok.extern.slf4j.Slf4j;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.river.mongodb.MongoConfig.Shard;
+import org.elasticsearch.river.mongodb.config.RiverProperties;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -15,7 +16,7 @@ import java.util.concurrent.Callable;
 public class MongoConfigProvider implements Callable<MongoConfig> {
 
     private final MongoClientService mongoClientService;
-    private final MongoDBRiverDefinition definition;
+    private final RiverProperties definition;
     private final MongoClient clusterClient;
 
     public MongoConfigProvider(MongoDBRiver river, MongoClientService mongoClientService) {
@@ -60,8 +61,8 @@ public class MongoConfigProvider implements Callable<MongoConfig> {
     }
 
     private boolean isMongos() {
-        if (definition.isMongos() != null) {
-            return definition.isMongos().booleanValue();
+        if (definition.getIsMongos()) {
+            return definition.getIsMongos();
         } else {
             DB adminDb = getAdminDb();
             if (adminDb == null) {

@@ -1,16 +1,17 @@
 package org.elasticsearch.river.mongodb;
 
 import lombok.extern.slf4j.Slf4j;
+import org.elasticsearch.river.mongodb.config.RiverProperties;
 import org.elasticsearch.river.mongodb.util.MongoDBRiverHelper;
 
 @Slf4j
 class StatusChecker implements Runnable {
 
     private final MongoDBRiver mongoDBRiver;
-    private final MongoDBRiverDefinition definition;
+    private final RiverProperties definition;
     private final SharedContext context;
 
-    public StatusChecker(MongoDBRiver mongoDBRiver, MongoDBRiverDefinition definition, SharedContext context) {
+    public StatusChecker(MongoDBRiver mongoDBRiver, RiverProperties definition, SharedContext context) {
         this.mongoDBRiver = mongoDBRiver;
         this.definition = definition;
         this.context = context;

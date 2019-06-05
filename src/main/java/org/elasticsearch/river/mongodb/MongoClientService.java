@@ -3,6 +3,7 @@ package org.elasticsearch.river.mongodb;
 import com.mongodb.MongoClient;
 import com.mongodb.ServerAddress;
 import lombok.extern.slf4j.Slf4j;
+import org.elasticsearch.river.mongodb.config.RiverProperties;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -21,7 +22,7 @@ public class MongoClientService {
 	MongoClient mongoClient;
 
 
-	public MongoClient getMongoClusterClient(MongoDBRiverDefinition definition) {
+	public MongoClient getMongoClusterClient(RiverProperties definition) {
 		return getMongoShardClient(definition, null);
 	}
 
@@ -31,7 +32,7 @@ public class MongoClientService {
 	 * If a client already exists for the given list of servers with the same credentials and
 	 * options it will be reused, otherwise a new client will be created.
 	 */
-	public MongoClient getMongoShardClient(MongoDBRiverDefinition definition, List<ServerAddress> shardServers) {
+	public MongoClient getMongoShardClient(RiverProperties definition, List<ServerAddress> shardServers) {
 		return mongoClient;
 	}
 }

@@ -22,6 +22,7 @@ import org.elasticsearch.client.IndicesAdminClient;
 import org.elasticsearch.cluster.metadata.MappingMetaData;
 import org.elasticsearch.common.collect.ImmutableOpenMap;
 import org.elasticsearch.common.xcontent.XContentBuilder;
+import org.elasticsearch.river.mongodb.config.RiverProperties;
 import org.elasticsearch.river.mongodb.util.MongoDBRiverHelper;
 import org.elasticsearch.threadpool.ThreadPool.Info;
 import org.elasticsearch.threadpool.ThreadPoolStats.Stats;
@@ -42,7 +43,7 @@ public class MongoDBRiverBulkProcessor {
     public static final long DEFAULT_BULK_QUEUE_SIZE = 50;
     public static final Map<String, Boolean> DROP_INDEX = ImmutableMap.of("dropIndex", Boolean.TRUE);
     private final MongoDBRiver river;
-    private final MongoDBRiverDefinition definition;
+    private final RiverProperties definition;
     private final Client client;
     private final BulkProcessor bulkProcessor;
     private final String index;
@@ -60,12 +61,12 @@ public class MongoDBRiverBulkProcessor {
     public static class Builder {
 
         private final MongoDBRiver river;
-        private final MongoDBRiverDefinition definition;
+        private final RiverProperties definition;
         private final Client client;
         private String index;
         private String type;
 
-        public Builder(MongoDBRiver river, MongoDBRiverDefinition definition, Client client, String index, String type) {
+        public Builder(MongoDBRiver river, RiverProperties definition, Client client, String index, String type) {
             this.river = river;
             this.definition = definition;
             this.client = client;
@@ -156,7 +157,7 @@ public class MongoDBRiverBulkProcessor {
         }
     };
 
-    MongoDBRiverBulkProcessor(MongoDBRiver river, MongoDBRiverDefinition definition, Client client, String index, String type) {
+    MongoDBRiverBulkProcessor(MongoDBRiver river, RiverProperties definition, Client client, String index, String type) {
         this.river = river;
         this.bulkProcessor = BulkProcessor.builder(client, listener).setBulkActions(definition.getBulk().getBulkActions())
                 .setConcurrentRequests(definition.getBulk().getConcurrentRequests())

@@ -10,6 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.bson.BasicBSONObject;
 import org.bson.types.ObjectId;
 import org.elasticsearch.client.Client;
+import org.elasticsearch.river.mongodb.config.RiverProperties;
 import org.elasticsearch.river.mongodb.util.MongoDBHelper;
 import org.elasticsearch.river.mongodb.util.MongoDBRiverHelper;
 
@@ -30,7 +31,7 @@ class OplogSlurper implements Runnable {
     }
 
     private final MongoDBRiver river;
-    private final MongoDBRiverDefinition definition;
+    private final RiverProperties definition;
     private final SharedContext context;
     private final BasicDBObject findKeys;
     private final String gridfsOplogNamespace;

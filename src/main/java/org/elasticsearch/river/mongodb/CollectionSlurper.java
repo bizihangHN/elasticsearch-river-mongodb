@@ -12,6 +12,7 @@ import org.bson.BasicBSONObject;
 import org.bson.types.ObjectId;
 import org.elasticsearch.client.Client;
 import org.elasticsearch.common.unit.TimeValue;
+import org.elasticsearch.river.mongodb.config.RiverProperties;
 import org.elasticsearch.river.mongodb.util.MongoDBHelper;
 import org.elasticsearch.river.mongodb.util.MongoDBRiverHelper;
 
@@ -24,7 +25,7 @@ import java.util.concurrent.atomic.AtomicLong;
 class CollectionSlurper {
 
     //映射规则
-    private final MongoDBRiverDefinition definition;
+    private final RiverProperties definition;
     private final SharedContext context;
     private final Client esClient;
     private final MongoClient mongoClient;

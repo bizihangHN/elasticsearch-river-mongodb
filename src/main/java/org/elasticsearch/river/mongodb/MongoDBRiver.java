@@ -101,7 +101,6 @@ public class MongoDBRiver {
 
     public MongoDBRiver(RiverName riverName,
                         RiverSettings settings,
-                        String riverIndexName,
                         Client esClient,
                         RiverProperties riverProperties,
                         MongoClientService mongoClientService) {
@@ -419,7 +418,7 @@ public class MongoDBRiver {
      * Get the latest timestamp for a given namespace.
      */
     @SuppressWarnings("unchecked")
-    public static Timestamp<?> getLastTimestamp(Client client, MongoDBRiverDefinition definition) {
+    public static Timestamp<?> getLastTimestamp(Client client, RiverProperties definition) {
         client.admin().indices().prepareRefresh(definition.getRiverIndexName()).get();
 
         GetResponse lastTimestampResponse = client.prepareGet(definition.getRiverIndexName(), definition.getRiverName(),
@@ -471,7 +470,7 @@ public class MongoDBRiver {
      * @param definition
      * @return
      */
-    public static long getIndexCount(Client client, MongoDBRiverDefinition definition) {
+    public static long getIndexCount(Client client, RiverProperties definition) {
         log.trace("这里需要优化");
         if (client.admin().indices().prepareExists(definition.getIndexName()).get().isExists()) {
             SearchRequestBuilder searchRequestBuilder = client.prepareSearch(definition.getIndexName());

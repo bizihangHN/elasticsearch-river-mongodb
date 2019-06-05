@@ -15,6 +15,7 @@ import org.elasticsearch.common.xcontent.XContentFactory;
 import org.elasticsearch.index.query.QueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.river.mongodb.MongoDBRiver.QueueEntry;
+import org.elasticsearch.river.mongodb.config.RiverProperties;
 import org.elasticsearch.river.mongodb.util.MongoDBHelper;
 import org.elasticsearch.search.SearchHit;
 
@@ -30,7 +31,7 @@ class Indexer implements Runnable {
 
     private final MongoDBRiver river;
     //定义了映射规则
-    private final MongoDBRiverDefinition definition;
+    private final RiverProperties definition;
     private final SharedContext context;
     private final Client esClient;
 //    private final ScriptService scriptService;

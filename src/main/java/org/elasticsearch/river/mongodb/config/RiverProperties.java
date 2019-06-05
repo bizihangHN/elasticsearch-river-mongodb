@@ -6,6 +6,8 @@ import com.mongodb.ServerAddress;
 import lombok.Getter;
 import lombok.Setter;
 import org.bson.types.BSONTimestamp;
+import org.elasticsearch.common.unit.ByteSizeValue;
+import org.elasticsearch.common.unit.TimeValue;
 import org.elasticsearch.river.mongodb.MongoDBRiver;
 import org.elasticsearch.river.mongodb.RiverName;
 import org.elasticsearch.river.mongodb.Timestamp;
@@ -98,6 +100,17 @@ public class RiverProperties {
 	private int connectionsPerHost = DEFAULT_CONNECTIONS_PER_HOST;
 	private int threadsAllowedToBlockForConnectionMultiplier = DEFAULT_THREADS_ALLOWED_TO_BLOCK_FOR_CONNECTION_MULTIPLIER;
 
+	private Bulk bulk;
+
+	@Getter
+	@Setter
+	public class Bulk {
+		private int concurrentRequests = DEFAULT_CONCURRENT_REQUESTS;
+		private int bulkActions = DEFAULT_BULK_ACTIONS;
+		private ByteSizeValue bulkSize = DEFAULT_BULK_SIZE;
+		private TimeValue flushInterval = DEFAULT_FLUSH_INTERVAL;
+	}
+
 	public void setIncludeFields(Set<String> includeFields) {
 		this.includeFields = includeFields;
 		if (!includeFields.contains(MongoDBRiver.MONGODB_ID_FIELD)) {
@@ -116,5 +129,9 @@ public class RiverProperties {
 			this.mongoCollectionFilter = convertToBasicDBObject(filter);
 			this.mongoCollectionFilter = convertToBasicDBObject(filter);
 		}
+	}
+
+	public String getMongoOplogNamespace() {
+		return getMongoDb() + "." + getMongoCollection();
 	}
 }
